@@ -10,10 +10,10 @@ import plotly.graph_objects as go
 
 executor = ThreadPoolExecutor(max_workers=1)
 
-POLARITY_OPTIONS = ['BOTH', 'CD ON (polarity=1)', 'CD OFF (polarity=0)']
+POLARITY_OPTIONS = ['BOTH', 'CD ON (polarity=1)', 'CD OFF (polarity=0)', 'SIGNED (ON - OFF)']
 BIAS_NAMES = ['bias_diff', 'bias_diff_off', 'bias_diff_on', 'bias_fo', 'bias_hpf', 'bias_refr']
-MAX_TIMETRACE_POINTS = 100000
-MAX_IEI_POINTS = 100000
+MAX_TIMETRACE_POINTS = 10000
+MAX_IEI_POINTS = 10000
 MAX_DISPLAY_FRAMES = 1000
 RECONNECT_TIMEOUT = 120
 
@@ -27,6 +27,12 @@ def main_page():
     generated_frames = None
     generated_timestamps = None
     updating = False
+    current_roi = None
+    signed_colorscale = [
+        [0, 'rgb(86, 180, 233)'], 
+        [0.5, 'rgba(255, 255, 255, 0)'],
+        [1, 'rgb(230, 159, 0)']
+        ]
 
     # === HELPER FUNCTIONS ===
 
@@ -36,6 +42,8 @@ def main_page():
             return 'on'
         elif polarity == 'CD OFF (polarity=0)':
             return 'off'
+        elif polarity == 'SIGNED (ON - OFF)':
+            return 'signed'
         return 'all'
 
     def get_frame_polarity_mode():
@@ -44,6 +52,8 @@ def main_page():
             return 'on'
         elif polarity == 'CD OFF (polarity=0)':
             return 'off'
+        elif polarity == 'SIGNED (ON - OFF)':
+            return 'signed'
         return 'all'
 
     # === UI CALLBACKS ===
@@ -54,6 +64,12 @@ def main_page():
         template = 'plotly_dark' if dark.value else 'plotly'
 
         if current_data is not None:
+            if get_polarity_mode() == 'signed':
+                if template == 'plotly_dark':
+                    signed_colorscale[1] =[0.5, 'rgba(255, 255, 255, 0)']
+                else:
+                    signed_colorscale[1] =[0.5, 'rgba(0, 0, 0, 0)']
+                histogram_plot.figure.update_coloraxes(colorscale='RdBu')
             histogram_plot.figure.update_layout(template=template)
             histogram_plot.update()
             
@@ -87,11 +103,22 @@ def main_page():
         mode = get_polarity_mode()
         histogram = compute_event_histogram(events, width, height, mode)
         
-        fig = go.Figure(go.Heatmap(
-            z=histogram,
-            colorscale='Viridis',
-            colorbar=dict(title='Count')
-        ))
+        if mode == 'signed':
+            max_abs = max(abs(histogram.min()), abs(histogram.max()), 1)
+            fig = go.Figure(go.Heatmap(
+                z=histogram,
+                colorscale=signed_colorscale,
+                zmid=0,
+                zmin=-max_abs,
+                zmax=max_abs,
+                colorbar=dict(title='ON - OFF')
+            ))
+        else:
+            fig = go.Figure(go.Heatmap(
+                z=histogram,
+                colorscale='Viridis',
+                colorbar=dict(title='Count')
+            ))
         fig.update_layout(
             xaxis_title='X Coordinate',
             yaxis_title='Y Coordinate',
@@ -116,6 +143,15 @@ def main_page():
         
         events = current_data['events']
         mode = get_polarity_mode()
+        
+        if current_roi is not None:
+            x_min, x_max, y_min, y_max = current_roi
+            roi_mask = (
+                (events['x'] >= x_min) & (events['x'] <= x_max) &
+                (events['y'] >= y_min) & (events['y'] <= y_max)
+            )
+            events = events[roi_mask]
+        
         if mode == 'on':
             events = events[events['p'] == 1]
         elif mode == 'off':
@@ -144,7 +180,7 @@ def main_page():
             xaxis_title='Inter-event interval (ms)',
             yaxis_title='Count',
             yaxis_type='log',
-            xaxis=dict(showgrid=True, dtick=1),
+            xaxis=dict(showgrid=True),
             yaxis=dict(showgrid=True),
             margin=dict(l=50, r=50, t=50, b=50),
             template='plotly_dark' if dark.value else 'plotly',
@@ -167,16 +203,35 @@ def main_page():
         
         events = current_data['events']
         mode = get_polarity_mode()
-        if mode == 'on':
-            events = events[events['p'] == 1]
-        elif mode == 'off':
-            events = events[events['p'] == 0]
+        
+        if current_roi is not None:
+            x_min, x_max, y_min, y_max = current_roi
+            roi_mask = (
+                (events['x'] >= x_min) & (events['x'] <= x_max) &
+                (events['y'] >= y_min) & (events['y'] <= y_max)
+            )
+            events = events[roi_mask]
+        
+        if len(events) == 0:
+            return
         
         times_us = events['t']
-        
         bin_width_us = 100
         bins = np.arange(times_us.min(), times_us.max() + bin_width_us, bin_width_us)
-        counts, _ = np.histogram(times_us, bins=bins)
+        
+        if mode == 'signed':
+            on_events = events[events['p'] == 1]
+            off_events = events[events['p'] == 0]
+            on_counts, _ = np.histogram(on_events['t'], bins=bins)
+            off_counts, _ = np.histogram(off_events['t'], bins=bins)
+            counts = on_counts.astype(np.float64) - off_counts.astype(np.float64)
+        else:
+            if mode == 'on':
+                events = events[events['p'] == 1]
+            elif mode == 'off':
+                events = events[events['p'] == 0]
+            times_us = events['t']
+            counts, _ = np.histogram(times_us, bins=bins)
         
         fft = np.fft.rfft(counts - counts.mean())
         power = np.abs(fft) ** 2
@@ -205,6 +260,7 @@ def main_page():
         spectrum_plot.update()
 
     async def on_shape_drawn(e):
+        nonlocal current_roi
         if e.args is None or current_data is None:
             return
         
@@ -214,6 +270,10 @@ def main_page():
         
         shapes = args['shapes']
         if not shapes or len(shapes) == 0:
+            current_roi = None
+            roi_label.text = ''
+            timetrace_plot.visible = False
+            await update_plots()
             return
         
         shape = shapes[-1]
@@ -225,16 +285,23 @@ def main_page():
         if y_min > y_max:
             y_min, y_max = y_max, y_min
 
-        await plot_timetrace(x_min, x_max, y_min, y_max)
-
-    async def plot_timetrace(x_min, x_max, y_min, y_max):
+        current_roi = (x_min, x_max, y_min, y_max)
+        roi_label.text = f'ROI: ({x_min}, {y_min}) → ({x_max}, {y_max})'
+        
         overlay = ui.dialog().props('persistent')
         with overlay, ui.card().classes('items-center p-8'):
             ui.spinner(size='xl')
-            ui.label('Plotting timetrace...').classes('mt-4')
+            ui.label('Updating ROI plots...').classes('mt-4')
         overlay.open()
-        await asyncio.sleep(0.1)
+        await asyncio.sleep(0.05)
         
+        update_power_spectrum()
+        update_iei_histogram()
+        plot_timetrace_inner(x_min, x_max, y_min, y_max)
+        
+        overlay.close()
+
+    def plot_timetrace_inner(x_min, x_max, y_min, y_max):
         events = current_data['events']
         
         mode = get_polarity_mode()
@@ -250,7 +317,6 @@ def main_page():
         selected_events = events[mask]
         
         if len(selected_events) == 0:
-            overlay.close()
             ui.notify('No events in selection', type='warning')
             return
         
@@ -283,8 +349,6 @@ def main_page():
         timetrace_plot.visible = True
         timetrace_plot.figure = fig
         timetrace_plot.update()
-        
-        overlay.close()
 
     def on_delta_t_change():
         nonlocal updating
@@ -318,7 +382,9 @@ def main_page():
                 ui.notify('Please select a .raw or .npz file', type='negative')
 
     async def process_file(path):
-        nonlocal current_file, current_data, recording_duration_ms
+        nonlocal current_file, current_data, recording_duration_ms, current_roi
+        current_roi = None
+        roi_label.text = ''
         suffix = path.suffix.lower()
         
         if suffix == '.raw':
@@ -425,6 +491,7 @@ def main_page():
                 label='MODE',
                 on_change=update_plots
             ).classes('w-48')
+            roi_label = ui.label('').classes('text-gray-400')
             ui.space()
             cd_on_badge = ui.badge('CD ON (polarity=1)').style('background-color: #E69F00 !important')
             cd_off_badge = ui.badge('CD OFF (polarity=0)').style('background-color: #56B4E9 !important')

@@ -51,6 +51,29 @@ def compute_event_histogram(events, width, height, mode='all'):
     width = int(width)
     height = int(height)
     
+    if mode == 'signed':
+        # Signed mode: ON pixels get positive counts, OFF pixels get negative
+        on_events = events[events['p'] == 1]
+        off_events = events[events['p'] == 0]
+        
+        histogram = np.zeros((height, width), dtype=np.int32)
+        
+        if len(on_events) > 0:
+            coords, counts = np.unique(
+                on_events['y'].astype(np.int64) * width + on_events['x'].astype(np.int64), 
+                return_counts=True
+            )
+            histogram.flat[coords] += counts.astype(np.int32)
+        
+        if len(off_events) > 0:
+            coords, counts = np.unique(
+                off_events['y'].astype(np.int64) * width + off_events['x'].astype(np.int64), 
+                return_counts=True
+            )
+            histogram.flat[coords] -= counts.astype(np.int32)
+        
+        return histogram
+    
     if mode == 'on':
         events = events[events['p'] == 1]
     elif mode == 'off':
