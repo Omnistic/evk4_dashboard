@@ -49,7 +49,6 @@ def main_page():
             colorbar=dict(title='Count')
         ))
         fig.update_layout(
-            title='HISTOGRAM',
             xaxis_title='X Coordinate',
             yaxis_title='Y Coordinate',
             yaxis=dict(scaleanchor='x', scaleratio=1),
@@ -109,7 +108,7 @@ def main_page():
             ui.notify('No events in selection', type='warning')
             return
         
-        max_points = 10000
+        max_points = 50000
         if len(selected_events) > max_points:
             indices = np.random.choice(len(selected_events), max_points, replace=False)
             indices.sort()
@@ -117,6 +116,7 @@ def main_page():
             ui.notify(f'Downsampled to {max_points:,} points', type='info')
         
         times = selected_events['t'] / 1e6
+        duration = times.max() - times.min()
         polarities = selected_events['p']
         colors = np.where(polarities == 1, '#E69F00', '#56B4E9')
         
@@ -130,9 +130,10 @@ def main_page():
             marker=dict(size=3, color=colors),
         ))
         fig.update_layout(
-            title='TIME TRACE',
             xaxis_title='Time (s)',
+            xaxis_range=[times.min()-0.01*duration, times.max()+0.01*duration],
             yaxis=dict(visible=False, range=[-0.6, 0.6]),
+            margin=dict(l=0, r=0, t=50, b=50),
             template='plotly_dark' if dark.value else 'plotly',
         )
         timetrace_plot.visible = True
@@ -238,20 +239,26 @@ def main_page():
         bias_table = ui.table(columns=[], rows=[], column_defaults={'align': 'center', 'headerClasses': 'uppercase text-primary'})
         bias_table.visible = False
     
-    with ui.row():
-        with ui.card() as histogram_card:
-            with ui.row():
+    with ui.row().classes('w-full'):
+        with ui.card().classes('flex-grow p-0') as histogram_card:
+            with ui.row().classes('w-full items-center'):
                 polarity_select = ui.select(
                     options=['BOTH', 'CD ON (polarity=1)', 'CD OFF (polarity=0)'],
                     value='BOTH',
                     label='MODE',
                     on_change=lambda: update_histogram()
                 ).classes('w-48')
-            with ui.row():
+                ui.space()
+                cd_on_badge = ui.badge('CD ON (polarity=1)').style('background-color: #E69F00 !important')
+                cd_off_badge = ui.badge('CD OFF (polarity=0)').style('background-color: #56B4E9 !important')
+            with ui.row().classes('w-full flex-nowrap gap-0'):
                 histogram_plot = ui.plotly({})
                 histogram_plot.on('plotly_relayout', on_shape_drawn)
-                timetrace_plot = ui.plotly({})
+                timetrace_plot = ui.plotly({}).classes('flex-grow')
                 timetrace_plot.visible = False
+
+            cd_on_badge.bind_visibility_from(timetrace_plot, 'visible')
+            cd_off_badge.bind_visibility_from(timetrace_plot, 'visible')
         histogram_card.visible = False
 
     ui.separator().bind_visibility_from(histogram_card, 'visible')

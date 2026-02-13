@@ -19,9 +19,9 @@ def raw_to_npz(file_path, overwrite=False):
     if path.suffix.lower() != '.raw':
         raise ValueError(f'Expected .raw file, got: {path.suffix}')
 
-    npy_path = path.with_suffix('.npz')
-    if npy_path.exists() and not overwrite:
-        warnings.warn(f'{npy_path} already exists, skipping (use overwrite=True to replace)')
+    npz_path = path.with_suffix('.npz')
+    if npz_path.exists() and not overwrite:
+        warnings.warn(f'{npz_path} already exists, skipping (use overwrite=True to replace)')
         return
 
     camera = Camera.from_file(str(path))
@@ -45,7 +45,7 @@ def raw_to_npz(file_path, overwrite=False):
                     name = parts[1].strip()
                     biases[name] = value
 
-    np.savez(npy_path, events=all_events, width=width, height=height, **biases)
+    np.savez(npz_path, events=all_events, width=width, height=height, **biases)
 
 def compute_event_histogram(events, width, height, mode='all'):
     width = int(width)
