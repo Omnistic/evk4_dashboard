@@ -68,6 +68,40 @@ def display_event_histogram(histogram):
     fig = go.Figure(go.Heatmap(z=histogram))
     fig.show()
 
+def generate_frames(events, width, height, delta_t_ms, mode='all'):
+    width = int(width)
+    height = int(height)
+    
+    if mode == 'on':
+        events = events[events['p'] == 1]
+    elif mode == 'off':
+        events = events[events['p'] == 0]
+    
+    if len(events) == 0:
+        return np.array([]), np.array([])
+    
+    delta_t_us = delta_t_ms * 1000
+    t_start = events['t'][0]
+    t_end = events['t'][-1]
+    
+    n_frames = int(np.ceil((t_end - t_start) / delta_t_us))
+    timestamps = np.arange(n_frames) * delta_t_us + t_start
+    
+    frame_idx = ((events['t'] - t_start) / delta_t_us).astype(np.int64)
+    frame_idx = np.clip(frame_idx, 0, n_frames - 1)
+    
+    frames = np.zeros((n_frames, height, width), dtype=np.uint16)
+    flat_coords = (
+        frame_idx * (height * width) +
+        events['y'].astype(np.int64) * width +
+        events['x'].astype(np.int64)
+    )
+    
+    unique_coords, counts = np.unique(flat_coords, return_counts=True)
+    frames.ravel()[unique_coords] = np.minimum(counts, 65535).astype(np.uint16)
+    
+    return frames, timestamps
+
 if __name__ == '__main__':
     file_path = os.getenv('FILE_PATH')
     if not file_path:
