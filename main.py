@@ -12,8 +12,10 @@ executor = ThreadPoolExecutor(max_workers=1)
 
 POLARITY_OPTIONS = ['BOTH', 'CD ON (polarity=1)', 'CD OFF (polarity=0)']
 BIAS_NAMES = ['bias_diff', 'bias_diff_off', 'bias_diff_on', 'bias_fo', 'bias_hpf', 'bias_refr']
-MAX_TIMETRACE_POINTS = 50000
-MAX_DISPLAY_FRAMES = 200
+MAX_TIMETRACE_POINTS = 100000
+MAX_IEI_POINTS = 100000
+MAX_DISPLAY_FRAMES = 1000
+RECONNECT_TIMEOUT = 120
 
 
 @ui.page('/')
@@ -69,9 +71,16 @@ def main_page():
             frame_plot.figure.update_layout(template=template)
             frame_plot.update()
 
-    def update_histogram():
+    async def update_plots():
         if current_data is None:
             return
+        
+        overlay = ui.dialog().props('persistent')
+        with overlay, ui.card().classes('items-center p-8'):
+            ui.spinner(size='xl')
+            ui.label('Updating plots...').classes('mt-4')
+        overlay.open()
+        await asyncio.sleep(0.1)
         
         events = current_data['events']
         width, height = int(current_data['width']), int(current_data['height'])
@@ -98,6 +107,8 @@ def main_page():
     
         update_iei_histogram()
         update_power_spectrum()
+        
+        overlay.close()
 
     def update_iei_histogram():
         if current_data is None:
@@ -117,8 +128,8 @@ def main_page():
         iei_ms = iei / 1000
         iei_ms = iei_ms[iei_ms > 0]
         
-        if len(iei_ms) > 50000:
-            indices = np.random.choice(len(iei_ms), 50000, replace=False)
+        if len(iei_ms) > MAX_IEI_POINTS:
+            indices = np.random.choice(len(iei_ms), MAX_IEI_POINTS, replace=False)
             iei_ms = iei_ms[indices]
         
         iei_min, iei_max = iei_ms.min(), iei_ms.max()
@@ -193,7 +204,7 @@ def main_page():
         spectrum_plot.figure = fig
         spectrum_plot.update()
 
-    def on_shape_drawn(e):
+    async def on_shape_drawn(e):
         if e.args is None or current_data is None:
             return
         
@@ -214,9 +225,16 @@ def main_page():
         if y_min > y_max:
             y_min, y_max = y_max, y_min
 
-        plot_timetrace(x_min, x_max, y_min, y_max)
+        await plot_timetrace(x_min, x_max, y_min, y_max)
 
-    def plot_timetrace(x_min, x_max, y_min, y_max):
+    async def plot_timetrace(x_min, x_max, y_min, y_max):
+        overlay = ui.dialog().props('persistent')
+        with overlay, ui.card().classes('items-center p-8'):
+            ui.spinner(size='xl')
+            ui.label('Plotting timetrace...').classes('mt-4')
+        overlay.open()
+        await asyncio.sleep(0.1)
+        
         events = current_data['events']
         
         mode = get_polarity_mode()
@@ -232,6 +250,7 @@ def main_page():
         selected_events = events[mask]
         
         if len(selected_events) == 0:
+            overlay.close()
             ui.notify('No events in selection', type='warning')
             return
         
@@ -264,6 +283,8 @@ def main_page():
         timetrace_plot.visible = True
         timetrace_plot.figure = fig
         timetrace_plot.update()
+        
+        overlay.close()
 
     def on_delta_t_change():
         nonlocal updating
@@ -370,7 +391,7 @@ def main_page():
         frames_input.value = 100
         on_frames_change()
 
-        update_histogram()
+        await update_plots()
         data_section.visible = True
 
     # === UI LAYOUT ===
@@ -402,7 +423,7 @@ def main_page():
                 options=POLARITY_OPTIONS,
                 value='BOTH',
                 label='MODE',
-                on_change=lambda: update_histogram()
+                on_change=update_plots
             ).classes('w-48')
             ui.space()
             cd_on_badge = ui.badge('CD ON (polarity=1)').style('background-color: #E69F00 !important')
@@ -567,4 +588,4 @@ def shutdown():
 
 app.on_startup(lambda: app.native.main_window.maximize())
 app.on_shutdown(shutdown)
-ui.run(native=True, reconnect_timeout=120)
+ui.run(native=True, reconnect_timeout=RECONNECT_TIMEOUT)
