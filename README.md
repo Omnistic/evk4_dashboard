@@ -24,38 +24,48 @@
 
 ### Installation
 
-This project uses [Pixi](https://pixi.sh/) for dependency management, making installation straightforward.
+This project uses [Pixi](https://pixi.sh/) for dependency management.
 
 #### Prerequisites
 
 **1. Install Pixi** (if you haven't already):
-```bash
-# macOS/Linux
-curl -fsSL https://pixi.sh/install.sh | bash
+```powershell
+# Windows (PowerShell)
+iwr -useb [https://pixi.sh/install.ps1](https://pixi.sh/install.ps1) | iex
 
-# Windows
-iwr -useb https://pixi.sh/install.ps1 | iex
+# macOS/Linux
+curl -fsSL [https://pixi.sh/install.sh](https://pixi.sh/install.sh) | bash
 ```
 
 **2. Install Prophesee Metavision SDK:**
-
 The Metavision SDK must be installed system-wide before using this dashboard.
+- **Windows**: [Metavision SDK Installation Guide](https://docs.prophesee.ai/stable/installation/windows.html)
+- **Linux**: [Metavision SDK Installation Guide](https://docs.prophesee.ai/stable/installation/linux.html)
 
-- **Windows**: [Metavision SDK - Windows Installation](https://docs.prophesee.ai/stable/installation/windows.html)
-- **Linux**: [Metavision SDK - Linux Installation](https://docs.prophesee.ai/stable/installation/linux.html)
+---
 
-> **Important:** The SDK installs to a system directory (e.g., `C:\Program Files\Prophesee\` on Windows). The Python bindings are accessed via `PYTHONPATH` configuration in `pixi.toml`.
+#### 📥 Setup (The Easy Way - Windows)
 
-#### Setup
+1. **Clone the repository:**
+   ```bash
+   git clone [https://github.com/Omnistic/evk4_dashboard.git](https://github.com/Omnistic/evk4_dashboard.git)
+   cd evk4_dashboard
+   ```
+2. **Configure Path:** Open `pixi.toml` and ensure the `PYTHONPATH` points to your Prophesee installation.
+   *Windows default: `C:\\Program Files\\Prophesee\\lib\\python3\\site-packages`*
+3. **Launch:** Double-click **`launch_dashboard.bat`**. 
+   *This script automatically verifies your Pixi installation, sets up the environment, and starts the dashboard.*
+
+---
+
+#### 🛠 Manual Setup (All Platforms)
+
+If you prefer the command line or are on Linux:
 
 ```bash
 # Clone the repository
-git clone https://github.com/Omnistic/evk4_dashboard.git
+git clone [https://github.com/Omnistic/evk4_dashboard.git](https://github.com/Omnistic/evk4_dashboard.git)
 cd evk4_dashboard
-
-# Update PYTHONPATH in pixi.toml to match your SDK installation
-# Windows default: C:\Program Files\Prophesee\lib\python3\site-packages
-# Linux default: /usr/lib/python3/dist-packages or similar
 
 # Install dependencies and set up environment
 pixi install
@@ -64,47 +74,13 @@ pixi install
 pixi run start
 ```
 
-#### Configuring the SDK Path
+### 🏃 Running the Application
 
-Edit `pixi.toml` and update the `PYTHONPATH` to match your installation:
-
-```toml
-[activation.env]
-PYTHONPATH = "C:\\Program Files\\Prophesee\\lib\\python3\\site-packages"  # Windows
-# PYTHONPATH = "/usr/lib/python3/dist-packages"  # Linux (adjust as needed)
-PYTHONNOUSERSITE = "1"
-```
-
-#### Alternative: Manual Installation (without Pixi)
-
-If you prefer not to use Pixi:
-
-```bash
-# Install Python dependencies
-pip install nicegui numpy plotly imageio tqdm
-
-# Install Prophesee SDK following the platform-specific guide above
-# Then configure PYTHONPATH to point to SDK's Python bindings:
-
-# Windows (PowerShell)
-$env:PYTHONPATH = "C:\Program Files\Prophesee\lib\python3\site-packages"
-
-# Linux/macOS (bash)
-export PYTHONPATH="/usr/lib/python3/dist-packages"
-
-# Run the dashboard
-python app.py
-```
-
-### Running the Application
-
-```bash
-# With Pixi (recommended)
-pixi run start
-
-# Or without Pixi (after setting PYTHONPATH manually)
-python app.py
-```
+| Method | Command / Action | Recommended For |
+| :--- | :--- | :--- |
+| **One-Click (Win)** | Double-click `launch_dashboard.bat` | Everyday use on Windows |
+| **Pixi CLI** | `pixi run start` | Development and Linux/macOS |
+| **Python CLI** | `python app.py` | Manual setups without Pixi |
 
 The dashboard will open in a native window, maximized and ready to use.
 
