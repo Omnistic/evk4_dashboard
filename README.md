@@ -39,12 +39,12 @@ iwr -useb https://pixi.sh/install.ps1 | iex
 
 **2. Install Prophesee Metavision SDK:**
 
-The Metavision SDK installation varies by platform. Follow the official instructions:
+The Metavision SDK must be installed system-wide before using this dashboard.
 
 - **Windows**: [Metavision SDK - Windows Installation](https://docs.prophesee.ai/stable/installation/windows.html)
 - **Linux**: [Metavision SDK - Linux Installation](https://docs.prophesee.ai/stable/installation/linux.html)
 
-> **Note:** After installing the SDK, make sure to install the Python bindings as described in the "Installing Python" section of the documentation.
+> **Important:** The SDK installs to a system directory (e.g., `C:\Program Files\Prophesee\` on Windows). The Python bindings are accessed via `PYTHONPATH` configuration in `pixi.toml`.
 
 #### Setup
 
@@ -53,8 +53,26 @@ The Metavision SDK installation varies by platform. Follow the official instruct
 git clone <your-repo-url>
 cd evk4_dashboard
 
-# Install dependencies and set up environment (that's it!)
+# Update PYTHONPATH in pixi.toml to match your SDK installation
+# Windows default: C:\Program Files\Prophesee\lib\python3\site-packages
+# Linux default: /usr/lib/python3/dist-packages or similar
+
+# Install dependencies and set up environment
 pixi install
+
+# Run the dashboard
+pixi run start
+```
+
+#### Configuring the SDK Path
+
+Edit `pixi.toml` and update the `PYTHONPATH` to match your installation:
+
+```toml
+[activation.env]
+PYTHONPATH = "C:\\Program Files\\Prophesee\\lib\\python3\\site-packages"  # Windows
+# PYTHONPATH = "/usr/lib/python3/dist-packages"  # Linux (adjust as needed)
+PYTHONNOUSERSITE = "1"
 ```
 
 #### Alternative: Manual Installation (without Pixi)
@@ -62,24 +80,29 @@ pixi install
 If you prefer not to use Pixi:
 
 ```bash
+# Install Python dependencies
 pip install nicegui numpy plotly imageio tqdm
 
-# For Prophesee SDK, follow the platform-specific installation guide above
-# Then install Python bindings:
-# pip install metavision-sdk-core metavision-sdk-driver metavision-sdk-stream
+# Install Prophesee SDK following the platform-specific guide above
+# Then configure PYTHONPATH to point to SDK's Python bindings:
+
+# Windows (PowerShell)
+$env:PYTHONPATH = "C:\Program Files\Prophesee\lib\python3\site-packages"
+
+# Linux/macOS (bash)
+export PYTHONPATH="/usr/lib/python3/dist-packages"
+
+# Run the dashboard
+python app.py
 ```
 
 ### Running the Application
 
 ```bash
 # With Pixi (recommended)
-pixi run python app.py
+pixi run start
 
-# Or activate the environment first
-pixi shell
-python app.py
-
-# Without Pixi
+# Or without Pixi (after setting PYTHONPATH manually)
 python app.py
 ```
 

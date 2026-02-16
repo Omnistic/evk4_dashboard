@@ -1,5 +1,5 @@
 [workspace]
-name = "testing_evk4_prophesee_sdk"
+name = "evk4_eventbased_base"
 version = "0.1.0"
 channels = ["conda-forge"]
 platforms = ["win-64"]
