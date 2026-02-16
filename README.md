@@ -50,7 +50,7 @@ The Metavision SDK must be installed system-wide before using this dashboard.
 
 ```bash
 # Clone the repository
-git clone <your-repo-url>
+git clone <https://github.com/Omnistic/evk4_dashboard>
 cd evk4_dashboard
 
 # Update PYTHONPATH in pixi.toml to match your SDK installation
@@ -413,9 +413,9 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 ## 📞 Contact & Support
 
-- **Issues**: [GitHub Issues](your-repo-url/issues)
-- **Discussions**: [GitHub Discussions](your-repo-url/discussions)
-- **Documentation**: [Wiki](your-repo-url/wiki)
+- **Issues**: [GitHub Issues](https://github.com/Omnistic/evk4_dashboard/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Omnistic/evk4_dashboard/discussions)
+- **Documentation**: [Wiki](https://github.com/Omnistic/evk4_dashboard/wiki)
 
 ---
 
@@ -423,6 +423,6 @@ This project is licensed under the MIT License - see LICENSE file for details.
 
 **Made with ❤️ for the event-based vision community**
 
-[⭐ Star this repo](your-repo-url) • [🐛 Report Bug](your-repo-url/issues) • [✨ Request Feature](your-repo-url/issues)
+[⭐ Star this repo](https://github.com/Omnistic/evk4_dashboard) • [🐛 Report Bug](https://github.com/Omnistic/evk4_dashboard/issues) • [✨ Request Feature](https://github.com/Omnistic/evk4_dashboard/issues)
 
 </div>
