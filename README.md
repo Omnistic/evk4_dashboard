@@ -50,7 +50,7 @@ The Metavision SDK must be installed system-wide before using this dashboard.
 
 ```bash
 # Clone the repository
-git clone <https://github.com/Omnistic/evk4_dashboard>
+git clone https://github.com/Omnistic/evk4_dashboard.git
 cd evk4_dashboard
 
 # Update PYTHONPATH in pixi.toml to match your SDK installation
