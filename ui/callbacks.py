@@ -65,9 +65,13 @@ async def loading_overlay(message: str = 'Loading...'):
             result = await some_async_function()
     """
     overlay = ui.dialog().props('persistent')
-    with overlay, ui.card().classes('items-center p-8'):
-        ui.spinner(size='xl')
-        ui.label(message).classes('mt-4')
+    with overlay:
+        # Card with strong shadow for visibility
+        with ui.card().classes('items-center p-8 shadow-2xl border-2'):
+            # Large, thick spinner in primary color (blue - visible in both modes)
+            ui.spinner(size='xl', color='primary', thickness=7)
+            # Bold, large text
+            ui.label(message).classes('mt-4 text-xl font-bold')
     overlay.open()
     await asyncio.sleep(0.05)
     
@@ -91,53 +95,57 @@ def create_toggle_dark_callback(state, dark, components):
         components: UIComponents namedtuple
     
     Returns:
-        Callback function
+        Async callback function
     """
-    def toggle_dark() -> None:
+    async def toggle_dark() -> None:
         """Toggle between dark and light mode themes."""
-        dark.toggle()
-        components.icon.set_name('light_mode' if dark.value else 'dark_mode')
-        
-        if state.current_data is not None:
-            # Reset ROI since shapes will be lost
-            state.current_roi = None
-            components.roi_label.text = ''
+        async with loading_overlay('Switching theme...'):
+            dark.toggle()
+            components.icon.set_name('light_mode' if dark.value else 'dark_mode')
             
-            # Update signed colorscale if in signed mode
-            polarity_mode = components.polarity_select.value
-            if get_polarity_mode_from_string(polarity_mode) == 'signed':
-                new_colorscale = PLOT_CONFIG.get_signed_colorscale(dark.value)
-                components.histogram_plot.figure.data[0].colorscale = new_colorscale
+            # Small delay to show the spinner
+            await asyncio.sleep(0.1)
             
-            # Update all plots
-            template = 'plotly_dark' if dark.value else 'plotly'
-            components.histogram_plot.figure.update_layout(template=template)
-            components.histogram_plot.update()
+            if state.current_data is not None:
+                # Reset ROI since shapes will be lost
+                state.current_roi = None
+                components.roi_label.text = ''
+                
+                # Update signed colorscale if in signed mode
+                polarity_mode = components.polarity_select.value
+                if get_polarity_mode_from_string(polarity_mode) == 'signed':
+                    new_colorscale = PLOT_CONFIG.get_signed_colorscale(dark.value)
+                    components.histogram_plot.figure.data[0].colorscale = new_colorscale
+                
+                # Update all plots
+                template = 'plotly_dark' if dark.value else 'plotly'
+                components.histogram_plot.figure.update_layout(template=template)
+                components.histogram_plot.update()
+                
+                update_iei_histogram(state, dark.value, polarity_mode, components.iei_plot)
+                update_power_spectrum(state, dark.value, polarity_mode, components.spectrum_plot)
+                update_timetrace(state, dark.value, polarity_mode, components.timetrace_plot)
+                
+                if components.timetrace_plot.visible:
+                    components.timetrace_plot.figure.update_layout(template=template)
+                    components.timetrace_plot.update()
+                
+                if components.iei_plot.figure and hasattr(components.iei_plot.figure, 'update_layout'):
+                    components.iei_plot.figure.update_layout(template=template)
+                    components.iei_plot.update()
+                    components.spectrum_plot.figure.update_layout(template=template)
+                    components.spectrum_plot.update()
             
-            update_iei_histogram(state, dark.value, polarity_mode, components.iei_plot)
-            update_power_spectrum(state, dark.value, polarity_mode, components.spectrum_plot)
-            update_timetrace(state, dark.value, polarity_mode, components.timetrace_plot)
-            
-            if components.timetrace_plot.visible:
-                components.timetrace_plot.figure.update_layout(template=template)
-                components.timetrace_plot.update()
-            
-            if components.iei_plot.figure and hasattr(components.iei_plot.figure, 'update_layout'):
-                components.iei_plot.figure.update_layout(template=template)
-                components.iei_plot.update()
-                components.spectrum_plot.figure.update_layout(template=template)
-                components.spectrum_plot.update()
-        
-        # Update frame viewer if frames are generated
-        if state.generated_frames is not None:
-            frame_polarity_mode = components.frame_polarity_select.value
-            if get_polarity_mode_from_string(frame_polarity_mode) == 'signed':
-                new_colorscale = PLOT_CONFIG.get_signed_colorscale(dark.value)
-                components.frame_plot.figure.data[0].colorscale = new_colorscale
-            
-            template = 'plotly_dark' if dark.value else 'plotly'
-            components.frame_plot.figure.update_layout(template=template)
-            components.frame_plot.update()
+            # Update frame viewer if frames are generated
+            if state.generated_frames is not None:
+                frame_polarity_mode = components.frame_polarity_select.value
+                if get_polarity_mode_from_string(frame_polarity_mode) == 'signed':
+                    new_colorscale = PLOT_CONFIG.get_signed_colorscale(dark.value)
+                    components.frame_plot.figure.data[0].colorscale = new_colorscale
+                
+                template = 'plotly_dark' if dark.value else 'plotly'
+                components.frame_plot.figure.update_layout(template=template)
+                components.frame_plot.update()
     
     return toggle_dark
 
@@ -458,14 +466,6 @@ def create_generate_frames_callback(state, dark, components):
         
         state.generated_frames = frames
         state.generated_timestamps = timestamps
-        
-        # Debug: Print frame statistics
-        print(f"DEBUG: Generated {len(frames)} frames")
-        print(f"DEBUG: Frame dtype: {frames.dtype}")
-        print(f"DEBUG: Frame min: {frames.min()}, max: {frames.max()}, mean: {frames.mean():.2f}")
-        print(f"DEBUG: Non-zero pixels in first frame: {np.count_nonzero(frames[0])}")
-        unique_vals = np.unique(frames[0])
-        print(f"DEBUG: First frame has {len(unique_vals)} unique values: {unique_vals[:20] if len(unique_vals) > 20 else unique_vals}")
         
         try:
             # Create frame plot with appropriate colorscale

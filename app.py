@@ -12,6 +12,8 @@ This is the main entry point that wires together UI components, callbacks, and b
 
 from nicegui import ui, app
 import os
+import asyncio
+from contextlib import asynccontextmanager
 
 from core import AppState, RECONNECT_TIMEOUT
 from ui import (
@@ -33,6 +35,45 @@ from ui import (
 from services import shutdown_executor
 
 
+# ============================================================================
+# HELPER FUNCTIONS
+# ============================================================================
+
+@asynccontextmanager
+async def loading_overlay(message: str = 'Loading...'):
+    """
+    Context manager for displaying loading overlays during async operations.
+    
+    Shows a persistent dialog with spinner and message while work is in progress.
+    Automatically closes when context exits.
+    
+    Args:
+        message: Message to display in the overlay
+    
+    Yields:
+        None
+    
+    Example:
+        async with loading_overlay('Processing data...'):
+            result = await some_async_function()
+    """
+    overlay = ui.dialog().props('persistent')
+    with overlay:
+        # Card with strong shadow for visibility
+        with ui.card().classes('items-center p-8 shadow-2xl border-2'):
+            # Large, thick spinner in primary color (blue - visible in both modes)
+            ui.spinner(size='xl', color='primary', thickness=7)
+            # Bold, large text
+            ui.label(message).classes('mt-4 text-xl font-bold')
+    overlay.open()
+    await asyncio.sleep(0.05)
+    
+    try:
+        yield
+    finally:
+        overlay.close()
+
+
 @ui.page('/')
 def main_page() -> None:
     """
@@ -50,18 +91,19 @@ def main_page() -> None:
     holder = ComponentsHolder()
     
     # Create polarity change callback that will use holder
-    def on_polarity_change_callback():
-        print(f"DEBUG: Polarity changed! state.current_data={state.current_data is not None}, holder.components={holder.components is not None}")
+    async def on_polarity_change_callback():
         if state.current_data is None or holder.components is None:
-            print("DEBUG: Returning early")
             return
-        polarity_mode = holder.components.polarity_select.value
-        print(f"DEBUG: Updating plots with mode: {polarity_mode}")
-        update_histogram_plot(state, dark.value, polarity_mode, holder.components.histogram_plot)
-        update_iei_histogram(state, dark.value, polarity_mode, holder.components.iei_plot)
-        update_power_spectrum(state, dark.value, polarity_mode, holder.components.spectrum_plot)
-        update_timetrace(state, dark.value, polarity_mode, holder.components.timetrace_plot)
-        print("DEBUG: Plots updated")
+        
+        async with loading_overlay('Updating polarity mode...'):
+            polarity_mode = holder.components.polarity_select.value
+            update_histogram_plot(state, dark.value, polarity_mode, holder.components.histogram_plot)
+            update_iei_histogram(state, dark.value, polarity_mode, holder.components.iei_plot)
+            update_power_spectrum(state, dark.value, polarity_mode, holder.components.spectrum_plot)
+            update_timetrace(state, dark.value, polarity_mode, holder.components.timetrace_plot)
+            
+            # Small delay to show the spinner
+            await asyncio.sleep(0.05)
     
     # Build UI layout with callback
     components = build_main_layout(dark, on_polarity_change=on_polarity_change_callback)
