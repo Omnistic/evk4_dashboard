@@ -1,16 +1,58 @@
-import numpy as np
-import os, warnings
-import plotly.graph_objects as go
+"""
+utils.py
 
-from dotenv import load_dotenv
+Utility functions for event-based camera data processing.
+
+This module provides core functionality for working with event camera data from
+Prophesee EVK4 sensors, including:
+    - File format conversion (.raw to .npz)
+    - Event filtering by polarity and spatial region
+    - Histogram computation for spatial analysis
+    - Frame generation with temporal binning
+    - Plotly figure creation for visualization
+
+Event Data Format:
+    Events are stored as structured NumPy arrays with fields:
+        - 't': timestamp in microseconds (uint64)
+        - 'x': horizontal pixel coordinate (uint16)
+        - 'y': vertical pixel coordinate (uint16)
+        - 'p': polarity (0=OFF, 1=ON) (uint8)
+"""
+
+import numpy as np
+import numpy.typing as npt
+from typing import Tuple, Optional
+import warnings
+import plotly.graph_objects as go
 from pathlib import Path
 from tqdm import tqdm
-
 from metavision_sdk_stream import Camera, CameraStreamSlicer
 
-load_dotenv()
+# ============================================================================
+# FILE I/O
+# ============================================================================
 
-def raw_to_npz(file_path, overwrite=False):
+def raw_to_npz(file_path: Path, overwrite: bool = False) -> None:
+    """
+    Convert .raw event file to compressed .npz format.
+    
+    Reads event data using Prophesee SDK and saves to NumPy compressed format
+    for faster loading. Also extracts and saves sensor dimensions and bias
+    settings if available.
+    
+    Args:
+        file_path: Path to input .raw file
+        overwrite: If True, overwrite existing .npz file; if False, skip conversion
+                  if .npz already exists
+    
+    Raises:
+        FileNotFoundError: If input file does not exist
+        ValueError: If input file is not a .raw file
+    
+    Note:
+        Output .npz file is created in the same directory as input with .npz extension.
+        Bias settings are read from companion .bias file if present.
+    """
     path = Path(file_path)
 
     if not path.exists():
@@ -24,6 +66,7 @@ def raw_to_npz(file_path, overwrite=False):
         warnings.warn(f'{npz_path} already exists, skipping (use overwrite=True to replace)')
         return
 
+    # Load event data using Prophesee SDK
     camera = Camera.from_file(str(path))
     slicer = CameraStreamSlicer(camera.move())
     width = slicer.camera().width()
@@ -34,6 +77,7 @@ def raw_to_npz(file_path, overwrite=False):
             chunks.append(slice.events.copy())
     all_events = np.concatenate(chunks)
 
+    # Load bias settings if available
     bias_path = path.with_suffix('.bias')
     biases = {}
     if bias_path.exists():
@@ -45,19 +89,158 @@ def raw_to_npz(file_path, overwrite=False):
                     name = parts[1].strip()
                     biases[name] = value
 
+    # Save to compressed format
     np.savez(npz_path, events=all_events, width=width, height=height, **biases)
 
-def compute_event_histogram(events, width, height, mode='all'):
+# ============================================================================
+# POLARITY MODE CONVERSION
+# ============================================================================
+
+def get_polarity_mode_from_string(polarity_string: str) -> str:
+    """
+    Convert UI polarity selection string to internal mode identifier.
+    
+    Translates human-readable polarity options from the UI into standardized
+    mode strings used throughout the application.
+    
+    Args:
+        polarity_string: One of:
+            - 'BOTH': Include all events
+            - 'CD ON (polarity=1)': Only ON events
+            - 'CD OFF (polarity=0)': Only OFF events
+            - 'SIGNED (ON - OFF)': Signed difference between ON and OFF
+    
+    Returns:
+        Mode string: 'all', 'on', 'off', or 'signed'
+    
+    Example:
+        >>> get_polarity_mode_from_string('CD ON (polarity=1)')
+        'on'
+        >>> get_polarity_mode_from_string('BOTH')
+        'all'
+    """
+    if polarity_string == 'CD ON (polarity=1)':
+        return 'on'
+    elif polarity_string == 'CD OFF (polarity=0)':
+        return 'off'
+    elif polarity_string == 'SIGNED (ON - OFF)':
+        return 'signed'
+    return 'all'
+
+# ============================================================================
+# EVENT FILTERING
+# ============================================================================
+
+def filter_events_by_polarity(
+    events: npt.NDArray[np.void], 
+    mode: str
+) -> npt.NDArray[np.void]:
+    """
+    Filter events based on polarity mode.
+    
+    Args:
+        events: Event array with 'p' field containing polarity values
+        mode: Filter mode:
+            - 'on': Return only ON events (p=1)
+            - 'off': Return only OFF events (p=0)
+            - 'all': Return all events unchanged
+            - 'signed': Return all events unchanged (filtering happens in analysis)
+    
+    Returns:
+        Filtered event array. For 'all' and 'signed' modes, returns input unchanged.
+    
+    Example:
+        >>> events = load_events()  # Load some events
+        >>> on_events = filter_events_by_polarity(events, 'on')
+        >>> len(on_events) <= len(events)
+        True
+    """
+    if mode == 'on':
+        return events[events['p'] == 1]
+    elif mode == 'off':
+        return events[events['p'] == 0]
+    return events
+
+def filter_events_by_roi(
+    events: npt.NDArray[np.void], 
+    roi: Optional[Tuple[int, int, int, int]]
+) -> npt.NDArray[np.void]:
+    """
+    Filter events to only those within region of interest (ROI) bounds.
+    
+    Args:
+        events: Event array with 'x' and 'y' coordinate fields
+        roi: ROI bounds as (x_min, x_max, y_min, y_max), or None for no filtering.
+            Coordinates are inclusive on both ends.
+    
+    Returns:
+        Filtered event array. If roi is None, returns input unchanged.
+    
+    Example:
+        >>> events = load_events()
+        >>> roi = (100, 200, 150, 250)  # Select 100x100 pixel region
+        >>> roi_events = filter_events_by_roi(events, roi)
+    """
+    if roi is None:
+        return events
+    
+    x_min, x_max, y_min, y_max = roi
+    mask = (
+        (events['x'] >= x_min) & (events['x'] <= x_max) &
+        (events['y'] >= y_min) & (events['y'] <= y_max)
+    )
+    return events[mask]
+
+# ============================================================================
+# HISTOGRAM COMPUTATION
+# ============================================================================
+
+def compute_event_histogram(
+    events: npt.NDArray[np.void], 
+    width: int, 
+    height: int, 
+    mode: str = 'all'
+) -> npt.NDArray[np.int32] | npt.NDArray[np.uint32]:
+    """
+    Compute 2D histogram of event locations (spatial event density).
+    
+    Counts events at each pixel location. For signed mode, computes the difference
+    between ON and OFF event counts at each pixel.
+    
+    Args:
+        events: Event array with 'x', 'y', and 'p' fields
+        width: Sensor width in pixels
+        height: Sensor height in pixels
+        mode: Processing mode:
+            - 'all': Count all events
+            - 'on': Count only ON events
+            - 'off': Count only OFF events
+            - 'signed': Compute ON count minus OFF count (signed difference)
+    
+    Returns:
+        2D array of shape (height, width) containing event counts per pixel.
+        For signed mode, returns int32 array (can be negative).
+        For other modes, returns uint32 array (non-negative).
+    
+    Example:
+        >>> events = load_events()
+        >>> histogram = compute_event_histogram(events, 640, 480, mode='all')
+        >>> histogram.shape
+        (480, 640)
+        >>> histogram.max()  # Pixel with most events
+        1523
+    """
     width = int(width)
     height = int(height)
     
     if mode == 'signed':
-        # Signed mode: ON pixels get positive counts, OFF pixels get negative
+        # Signed mode: ON events - OFF events
         on_events = events[events['p'] == 1]
         off_events = events[events['p'] == 0]
         
         histogram = np.zeros((height, width), dtype=np.int32)
         
+        # Add ON events
         if len(on_events) > 0:
             coords, counts = np.unique(
                 on_events['y'].astype(np.int64) * width + on_events['x'].astype(np.int64), 
@@ -65,6 +248,7 @@ def compute_event_histogram(events, width, height, mode='all'):
             )
             histogram.flat[coords] += counts.astype(np.int32)
         
+        # Subtract OFF events
         if len(off_events) > 0:
             coords, counts = np.unique(
                 off_events['y'].astype(np.int64) * width + off_events['x'].astype(np.int64), 
@@ -74,6 +258,7 @@ def compute_event_histogram(events, width, height, mode='all'):
         
         return histogram
     
+    # Regular modes: filter first, then count
     if mode == 'on':
         events = events[events['p'] == 1]
     elif mode == 'off':
@@ -87,18 +272,157 @@ def compute_event_histogram(events, width, height, mode='all'):
     histogram.flat[coords] = counts
     return histogram
 
-def display_event_histogram(histogram):
+# ============================================================================
+# PLOTLY FIGURE CREATION
+# ============================================================================
+
+def create_signed_heatmap(
+    histogram: npt.NDArray[np.int32], 
+    signed_colorscale: list
+) -> go.Figure:
+    """
+    Create Plotly heatmap for signed (ON - OFF) event data.
+    
+    Uses diverging colorscale centered at zero, with symmetric limits to properly
+    represent both positive (ON-dominated) and negative (OFF-dominated) values.
+    
+    Args:
+        histogram: 2D array with signed event counts (int32)
+        signed_colorscale: Plotly colorscale list, typically diverging from
+                          blue (negative) through transparent (zero) to orange (positive)
+    
+    Returns:
+        Plotly Figure object ready for display or further layout configuration
+    
+    Example:
+        >>> histogram = compute_event_histogram(events, 640, 480, mode='signed')
+        >>> colorscale = [[0, 'blue'], [0.5, 'white'], [1, 'orange']]
+        >>> fig = create_signed_heatmap(histogram, colorscale)
+    """
+    max_abs = max(abs(histogram.min()), abs(histogram.max()), 1)
+    return go.Figure(go.Heatmap(
+        z=histogram,
+        colorscale=signed_colorscale,
+        zmid=0,
+        zmin=-max_abs,
+        zmax=max_abs,
+        colorbar=dict(title='ON - OFF')
+    ))
+
+def create_regular_heatmap(histogram: npt.NDArray[np.uint32]) -> go.Figure:
+    """
+    Create Plotly heatmap for regular (unsigned) event count data.
+    
+    Uses standard Viridis colorscale for non-negative event counts.
+    
+    Args:
+        histogram: 2D array with event counts (uint32)
+    
+    Returns:
+        Plotly Figure object ready for display or further layout configuration
+    
+    Example:
+        >>> histogram = compute_event_histogram(events, 640, 480, mode='all')
+        >>> fig = create_regular_heatmap(histogram)
+    """
+    return go.Figure(go.Heatmap(
+        z=histogram,
+        colorscale='Viridis',
+        colorbar=dict(title='Count')
+    ))
+
+def display_event_histogram(histogram: npt.NDArray) -> None:
+    """
+    Display event histogram in a browser window (standalone use).
+    
+    Convenience function for quick visualization during development or
+    interactive analysis. Creates a basic Plotly figure and opens in browser.
+    
+    Args:
+        histogram: 2D array of event counts
+    
+    Example:
+        >>> histogram = compute_event_histogram(events, 640, 480)
+        >>> display_event_histogram(histogram)  # Opens in browser
+    """
     fig = go.Figure(go.Heatmap(z=histogram))
     fig.show()
 
-def generate_frames(events, width, height, delta_t_ms, mode='all'):
+# ============================================================================
+# FRAME GENERATION
+# ============================================================================
+
+def generate_frames(
+    events: npt.NDArray[np.void], 
+    width: int, 
+    height: int, 
+    delta_t_ms: float, 
+    mode: str = 'all',
+    clip_value: Optional[int] = 65535,
+    scale_to_fit: bool = False
+) -> Tuple[npt.NDArray[np.int32] | npt.NDArray[np.uint16], npt.NDArray[np.float64]]:
+    """
+    Generate video frames from events by accumulating events in time windows.
+    
+    Events are binned into temporal windows of size delta_t_ms. For non-signed modes,
+    event counts per pixel are accumulated. For signed mode, ON events are added and
+    OFF events are subtracted to produce signed frames.
+    
+    Frame values can be clipped to uint16 range (default) for storage efficiency,
+    scaled to preserve dynamic range, or kept as full uint32.
+    
+    Args:
+        events: Structured array of events with fields 't', 'x', 'y', 'p'
+        width: Frame width in pixels
+        height: Frame height in pixels
+        delta_t_ms: Time window for each frame in milliseconds
+        mode: Polarity mode:
+            - 'all': Accumulate all events
+            - 'on': Only ON events
+            - 'off': Only OFF events
+            - 'signed': ON events minus OFF events (results in signed int32 frames)
+        clip_value: Maximum value for clipping event counts. Default 65535 (uint16 max).
+                   Pixels with more events are capped at this value.
+                   Set to None to disable clipping and keep full uint32 range.
+        scale_to_fit: If True, linearly scale all frames so max value equals clip_value.
+                     Preserves relative event counts across all pixels but may reduce
+                     contrast in individual frames. Only applies when clip_value is set.
+    
+    Returns:
+        Tuple containing:
+            - frames: Array of shape (n_frames, height, width)
+                     dtype is int32 for signed mode (can be negative)
+                     dtype is uint16 for clipped non-signed modes
+                     dtype is uint32 for non-clipped non-signed modes
+            - timestamps: Array of frame start times in microseconds (uint64)
+    
+    Examples:
+        >>> events = load_events()
+        >>> 
+        >>> # Default: clip at 65535 for uint16 storage
+        >>> frames, ts = generate_frames(events, 640, 480, 33.0)
+        >>> frames.dtype
+        dtype('uint16')
+        >>> 
+        >>> # Scale to preserve dynamic range without hard clipping
+        >>> frames, ts = generate_frames(events, 640, 480, 33.0, scale_to_fit=True)
+        >>> 
+        >>> # No clipping, keep full uint32 range
+        >>> frames, ts = generate_frames(events, 640, 480, 33.0, clip_value=None)
+        >>> frames.dtype
+        dtype('uint32')
+        >>> 
+        >>> # Signed mode for ON-OFF difference
+        >>> frames, ts = generate_frames(events, 640, 480, 33.0, mode='signed')
+        >>> frames.dtype
+        dtype('int32')
+    
+    Note:
+        For signed mode, clip_value and scale_to_fit are ignored since frames
+        contain negative values. Signed frames are always returned as int32.
+    """
     width = int(width)
     height = int(height)
-    
-    if mode == 'on':
-        events = events[events['p'] == 1]
-    elif mode == 'off':
-        events = events[events['p'] == 0]
     
     if len(events) == 0:
         return np.array([]), np.array([])
@@ -110,30 +434,79 @@ def generate_frames(events, width, height, delta_t_ms, mode='all'):
     n_frames = int(np.ceil((t_end - t_start) / delta_t_us))
     timestamps = np.arange(n_frames) * delta_t_us + t_start
     
-    frame_idx = ((events['t'] - t_start) / delta_t_us).astype(np.int64)
-    frame_idx = np.clip(frame_idx, 0, n_frames - 1)
-    
-    frames = np.zeros((n_frames, height, width), dtype=np.uint16)
-    flat_coords = (
-        frame_idx * (height * width) +
-        events['y'].astype(np.int64) * width +
-        events['x'].astype(np.int64)
-    )
-    
-    unique_coords, counts = np.unique(flat_coords, return_counts=True)
-    frames.ravel()[unique_coords] = np.minimum(counts, 65535).astype(np.uint16)
-    
-    return frames, timestamps
-
-if __name__ == '__main__':
-    file_path = os.getenv('FILE_PATH')
-    if not file_path:
-        raise ValueError('FILE_PATH environment variable not set')
-    raw_to_npz(file_path)
-
-    npz_path = Path(file_path).with_suffix('.npz')
-    data = np.load(npz_path)
-    events, width, height = data['events'], data['width'], data['height']
-
-    histogram = compute_event_histogram(events, width, height)
-    display_event_histogram(histogram)
+    if mode == 'signed':
+        # Signed mode: ON events positive, OFF events negative
+        on_events = events[events['p'] == 1]
+        off_events = events[events['p'] == 0]
+        
+        frames = np.zeros((n_frames, height, width), dtype=np.int32)
+        
+        # Add ON events
+        if len(on_events) > 0:
+            frame_idx = ((on_events['t'] - t_start) / delta_t_us).astype(np.int64)
+            frame_idx = np.clip(frame_idx, 0, n_frames - 1)
+            flat_coords = (
+                frame_idx * (height * width) +
+                on_events['y'].astype(np.int64) * width +
+                on_events['x'].astype(np.int64)
+            )
+            unique_coords, counts = np.unique(flat_coords, return_counts=True)
+            frames.ravel()[unique_coords] += counts.astype(np.int32)
+        
+        # Subtract OFF events
+        if len(off_events) > 0:
+            frame_idx = ((off_events['t'] - t_start) / delta_t_us).astype(np.int64)
+            frame_idx = np.clip(frame_idx, 0, n_frames - 1)
+            flat_coords = (
+                frame_idx * (height * width) +
+                off_events['y'].astype(np.int64) * width +
+                off_events['x'].astype(np.int64)
+            )
+            unique_coords, counts = np.unique(flat_coords, return_counts=True)
+            frames.ravel()[unique_coords] -= counts.astype(np.int32)
+        
+        # Note: Clipping and scaling not applied to signed frames as they contain negative values
+        return frames, timestamps
+    else:
+        # Regular modes (on, off, all)
+        if mode == 'on':
+            events = events[events['p'] == 1]
+        elif mode == 'off':
+            events = events[events['p'] == 0]
+        
+        if len(events) == 0:
+            return np.array([]), np.array([])
+        
+        frame_idx = ((events['t'] - t_start) / delta_t_us).astype(np.int64)
+        frame_idx = np.clip(frame_idx, 0, n_frames - 1)
+        
+        # Start with uint32 to avoid overflow during accumulation
+        frames = np.zeros((n_frames, height, width), dtype=np.uint32)
+        flat_coords = (
+            frame_idx * (height * width) +
+            events['y'].astype(np.int64) * width +
+            events['x'].astype(np.int64)
+        )
+        
+        unique_coords, counts = np.unique(flat_coords, return_counts=True)
+        frames.ravel()[unique_coords] = counts
+        
+        # Apply scaling or clipping if requested
+        if clip_value is not None:
+            if scale_to_fit:
+                # Scale linearly so maximum value equals clip_value
+                # Preserves relative intensities but may reduce contrast
+                max_val = frames.max()
+                if max_val > clip_value:
+                    frames = (frames.astype(np.float64) * clip_value / max_val).astype(np.uint16)
+                else:
+                    frames = frames.astype(np.uint16)
+            else:
+                # Hard clip: pixels exceeding clip_value are saturated at clip_value
+                # This is the default behavior (clip_value=65535 for uint16 storage)
+                frames = np.minimum(frames, clip_value).astype(np.uint16)
+        else:
+            # No clipping - keep as uint32 (not recommended for TIFF export)
+            pass
+        
+        return frames, timestamps
