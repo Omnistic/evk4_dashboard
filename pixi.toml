@@ -9,7 +9,7 @@ PYTHONPATH = "C:\\Program Files\\Prophesee\\lib\\python3\\site-packages"
 PYTHONNOUSERSITE = "1"
 
 [tasks]
-start = "python main.py"
+start = "python app.py"
 
 # ====================
 # Conda dependencies

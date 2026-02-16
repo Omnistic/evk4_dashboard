@@ -431,7 +431,14 @@ def generate_frames(
     t_start = events['t'][0]
     t_end = events['t'][-1]
     
-    n_frames = int(np.ceil((t_end - t_start) / delta_t_us))
+    # Use floor (int()) instead of ceil to match UI calculation
+    # This ensures that if user requests N frames, they get exactly N frames
+    n_frames = int((t_end - t_start) / delta_t_us)
+    
+    # Ensure we have at least 1 frame
+    if n_frames < 1:
+        n_frames = 1
+    
     timestamps = np.arange(n_frames) * delta_t_us + t_start
     
     if mode == 'signed':
