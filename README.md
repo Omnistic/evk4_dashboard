@@ -6,6 +6,7 @@
 
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![NiceGUI](https://img.shields.io/badge/NiceGUI-1.0+-green.svg)
+![Plotly](https://img.shields.io/badge/Plotly-interactive-3F4F75.svg)
 ![Pixi](https://img.shields.io/badge/Pixi-managed-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 
