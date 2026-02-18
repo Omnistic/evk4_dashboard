@@ -410,10 +410,14 @@ def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
         fig.update_layout(**get_base_layout(
             dark_mode,
             xaxis_title='Time (s)',
-            xaxis_range=[
-                times.min() - TIMETRACE_MARGIN_RATIO * duration, 
-                times.max() + TIMETRACE_MARGIN_RATIO * duration
-            ],
+            xaxis=dict(
+                range=[
+                    times.min() - TIMETRACE_MARGIN_RATIO * duration, 
+                    times.max() + TIMETRACE_MARGIN_RATIO * duration
+                ],
+                showgrid=True,
+                tickmode='linear',
+            ),
             yaxis=dict(visible=False, range=[-0.6, 0.6]),
             margin=PLOT_CONFIG.get_timetrace_margin(),
         ))

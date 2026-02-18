@@ -92,7 +92,7 @@ class PlotConfig:
     timetrace_margin_r: int = 0
     timetrace_margin_t: int = 50
     timetrace_margin_b: int = 50
-    timetrace_marker_size: int = 3
+    timetrace_marker_size: int = 5
     
     def __post_init__(self):
         """Initialize colorscales after dataclass creation."""
