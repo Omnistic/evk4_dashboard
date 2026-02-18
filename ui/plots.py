@@ -107,15 +107,22 @@ def get_base_layout(dark_mode: bool, **kwargs) -> dict:
     return base
 
 
-def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot):
+def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot, zmin=None, zmax=None):
     """
     Update event histogram plot.
+    
+    Recomputes the 2D spatial histogram and redraws the heatmap. If zmin/zmax
+    are provided, the colorscale is clamped to those values — useful for revealing
+    low-activity pixels when bright hotspots dominate. If either is None, that
+    limit is auto-scaled from the data.
     
     Args:
         state: AppState instance
         dark_mode: Whether dark mode is active
         polarity_mode: Current polarity mode string
         histogram_plot: NiceGUI plotly component
+        zmin: Optional minimum colorscale value. None = auto.
+        zmax: Optional maximum colorscale value. None = auto.
     """
     if state.current_data is None:
         return
@@ -143,9 +150,9 @@ def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot):
         # Create appropriate heatmap based on mode
         if mode == 'signed':
             signed_colorscale = PLOT_CONFIG.get_signed_colorscale(dark_mode)
-            fig = create_signed_heatmap(histogram, signed_colorscale)
+            fig = create_signed_heatmap(histogram, signed_colorscale, zmin=zmin, zmax=zmax)
         else:
-            fig = create_regular_heatmap(histogram)
+            fig = create_regular_heatmap(histogram, zmin=zmin, zmax=zmax)
         
         # Apply layout and update
         fig = apply_heatmap_layout(fig, dark_mode)

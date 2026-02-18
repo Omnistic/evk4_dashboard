@@ -19,12 +19,16 @@ class UIComponents(NamedTuple):
     overwrite_toggle: ui.switch
     file_label: ui.label
     polarity_select: ui.select
+    colorscale_min: ui.number
+    colorscale_max: ui.number 
     roi_label: ui.label
     time_range_slider: ui.range
     time_range_from: ui.number
     time_range_to: ui.number
     time_range_label: ui.label
     frame_polarity_select: ui.select
+    frame_colorscale_min: ui.number
+    frame_colorscale_max: ui.number 
     delta_t_input: ui.number
     frames_input: ui.number
     
@@ -119,6 +123,12 @@ def build_main_layout(dark, on_polarity_change=None) -> UIComponents:
             ).classes('w-48')
             roi_label = ui.label('').classes('text-gray-400')
             ui.space()
+            colorscale_min = ui.number(
+                label='Color min', value=None, format='%.0f'
+            ).classes('w-32').props('clearable')
+            colorscale_max = ui.number(
+                label='Color max', value=None, format='%.0f'
+            ).classes('w-32').props('clearable')
             ui.badge('CD ON (polarity=1)').style(f'background-color: {PLOT_CONFIG.color_on} !important')
             ui.badge('CD OFF (polarity=0)').style(f'background-color: {PLOT_CONFIG.color_off} !important')
 
@@ -168,6 +178,12 @@ def build_main_layout(dark, on_polarity_change=None) -> UIComponents:
                 value='BOTH', 
                 label='MODE'
             ).classes('w-48')
+            frame_colorscale_min = ui.number(
+                label='Color min', value=None, format='%.0f'
+            ).classes('w-32').props('clearable')
+            frame_colorscale_max = ui.number(
+                label='Color max', value=None, format='%.0f'
+            ).classes('w-32').props('clearable')
         
         with ui.column().classes('w-full') as frame_viewer:
             frame_plot = ui.plotly({})
@@ -211,4 +227,8 @@ def build_main_layout(dark, on_polarity_change=None) -> UIComponents:
         frame_index_label=frame_index_label,
         frame_viewer=frame_viewer,
         data_section=data_section,
+        colorscale_min=colorscale_min,
+        colorscale_max=colorscale_max,
+        frame_colorscale_min=frame_colorscale_min,
+        frame_colorscale_max=frame_colorscale_max,
     )

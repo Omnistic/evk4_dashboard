@@ -20,7 +20,6 @@ from core import (
     save_config,
     PLOT_CONFIG,
     MAX_DISPLAY_FRAMES,
-    FRAME_PERCENTILE_ZMAX,
 )
 from core.validation import validate_positive_number, validate_roi_bounds, validate_events_not_empty
 from services import (
@@ -171,7 +170,11 @@ def create_update_plots_callback(state, dark, components):
         
         async with loading_overlay('Updating plots...'):
             polarity_mode = components.polarity_select.value
-            update_histogram_plot(state, dark.value, polarity_mode, components.histogram_plot)
+            update_histogram_plot(
+                state, dark.value, polarity_mode, components.histogram_plot,
+                zmin=components.colorscale_min.value,
+                zmax=components.colorscale_max.value,
+            )
             update_iei_histogram(state, dark.value, polarity_mode, components.iei_plot)
             update_power_spectrum(state, dark.value, polarity_mode, components.spectrum_plot)
             update_timetrace(state, dark.value, polarity_mode, components.timetrace_plot)
@@ -577,25 +580,21 @@ def create_generate_frames_callback(state, dark, components):
             # Create frame plot with appropriate colorscale
             if mode == 'signed':
                 max_abs = max(abs(frames.min()), abs(frames.max()), 1)
-                
                 frame_colorscale = PLOT_CONFIG.get_signed_colorscale(dark.value)
-                
                 fig = go.Figure(go.Heatmap(
                     z=frames[0],
                     colorscale=frame_colorscale,
                     zmid=0,
-                    zmin=-max_abs,
-                    zmax=max_abs,
+                    zmin=components.frame_colorscale_min.value if components.frame_colorscale_min.value is not None else -max_abs,
+                    zmax=components.frame_colorscale_max.value if components.frame_colorscale_max.value is not None else max_abs,
                     colorbar=dict(title='ON - OFF')
                 ))
             else:
-                zmin = 0
-                zmax = max(1, np.percentile(frames[frames > 0], FRAME_PERCENTILE_ZMAX)) if np.any(frames > 0) else 1
                 fig = go.Figure(go.Heatmap(
                     z=frames[0],
                     colorscale='Viridis',
-                    zmin=zmin,
-                    zmax=zmax,
+                    zmin=components.frame_colorscale_min.value,
+                    zmax=components.frame_colorscale_max.value,
                     colorbar=dict(title='Count')
                 ))
             

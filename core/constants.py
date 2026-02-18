@@ -50,6 +50,5 @@ MAX_FREQUENCY_HZ: float = 2000  # Maximum frequency to display in power spectrum
 # VISUALIZATION PARAMETERS
 # ============================================================================
 
-FRAME_PERCENTILE_ZMAX: int = 99  # Use 99th percentile for frame colorscale max
 TIMETRACE_JITTER: float = 0.5  # Vertical jitter range for time trace scatter plot
 TIMETRACE_MARGIN_RATIO: float = 0.01  # Margin as ratio of duration for time axis

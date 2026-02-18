@@ -298,19 +298,25 @@ def compute_event_histogram(
 # ============================================================================
 
 def create_signed_heatmap(
-    histogram: npt.NDArray[np.int32], 
-    signed_colorscale: list
+    histogram: npt.NDArray[np.int32],
+    signed_colorscale: list,
+    zmin: Optional[float] = None,
+    zmax: Optional[float] = None,
 ) -> go.Figure:
     """
     Create Plotly heatmap for signed (ON - OFF) event data.
     
-    Uses diverging colorscale centered at zero, with symmetric limits to properly
-    represent both positive (ON-dominated) and negative (OFF-dominated) values.
+    Uses diverging colorscale centered at zero. By default, limits are set
+    symmetrically around zero based on the data range. Manual zmin/zmax can
+    be provided to clamp the colorscale, which is useful when bright hotspots
+    would otherwise wash out the rest of the data.
     
     Args:
         histogram: 2D array with signed event counts (int32)
         signed_colorscale: Plotly colorscale list, typically diverging from
                           blue (negative) through transparent (zero) to orange (positive)
+        zmin: Minimum value for colorscale. If None, uses -max_abs (auto symmetric).
+        zmax: Maximum value for colorscale. If None, uses +max_abs (auto symmetric).
     
     Returns:
         Plotly Figure object ready for display or further layout configuration
@@ -318,37 +324,54 @@ def create_signed_heatmap(
     Example:
         >>> histogram = compute_event_histogram(events, 640, 480, mode='signed')
         >>> colorscale = [[0, 'blue'], [0.5, 'white'], [1, 'orange']]
+        >>> # Auto scale
         >>> fig = create_signed_heatmap(histogram, colorscale)
+        >>> # Manual clamp to [-50, 50]
+        >>> fig = create_signed_heatmap(histogram, colorscale, zmin=-50, zmax=50)
     """
     max_abs = max(abs(histogram.min()), abs(histogram.max()), 1)
     return go.Figure(go.Heatmap(
         z=histogram,
         colorscale=signed_colorscale,
         zmid=0,
-        zmin=-max_abs,
-        zmax=max_abs,
+        zmin=zmin if zmin is not None else -max_abs,
+        zmax=zmax if zmax is not None else max_abs,
         colorbar=dict(title='ON - OFF')
     ))
 
-def create_regular_heatmap(histogram: npt.NDArray[np.uint32]) -> go.Figure:
+def create_regular_heatmap(
+    histogram: npt.NDArray[np.uint32],
+    zmin: Optional[float] = None,
+    zmax: Optional[float] = None,
+) -> go.Figure:
     """
     Create Plotly heatmap for regular (unsigned) event count data.
     
-    Uses standard Viridis colorscale for non-negative event counts.
+    Uses standard Viridis colorscale for non-negative event counts. By default,
+    the colorscale spans the full data range. Manual zmin/zmax can be provided
+    to clamp the colorscale, which is useful when bright hotspots would otherwise
+    wash out the rest of the data.
     
     Args:
         histogram: 2D array with event counts (uint32)
+        zmin: Minimum value for colorscale. If None, Plotly auto-scales from data.
+        zmax: Maximum value for colorscale. If None, Plotly auto-scales from data.
     
     Returns:
         Plotly Figure object ready for display or further layout configuration
     
     Example:
         >>> histogram = compute_event_histogram(events, 640, 480, mode='all')
+        >>> # Auto scale
         >>> fig = create_regular_heatmap(histogram)
+        >>> # Clamp to [0, 100] to reveal low-activity pixels
+        >>> fig = create_regular_heatmap(histogram, zmin=0, zmax=100)
     """
     return go.Figure(go.Heatmap(
         z=histogram,
         colorscale='Viridis',
+        zmin=zmin,
+        zmax=zmax,
         colorbar=dict(title='Count')
     ))
 
