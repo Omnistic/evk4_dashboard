@@ -234,7 +234,6 @@ def update_iei_histogram(state, dark_mode, polarity_mode, iei_plot):
             print(f'Warning: Invalid IEI range: {iei_min} to {iei_max}')
             return
         
-        # Create histogram
         fig = go.Figure(go.Histogram(
             x=iei_ms.tolist(),
             nbinsx=IEI_HISTOGRAM_NBINS,
@@ -245,7 +244,6 @@ def update_iei_histogram(state, dark_mode, polarity_mode, iei_plot):
             )
         ))
         
-        # Apply layout with dual axes (ms and Hz)
         fig.update_layout(**get_base_layout(
             dark_mode,
             xaxis_title='Inter-event interval (ms)',
@@ -343,7 +341,6 @@ def update_power_spectrum(state, dark_mode, polarity_mode, spectrum_plot):
             state.cached_power_spectrum = (freqs, power)
             state.cached_power_spectrum_key = cache_key
         
-        # Create plot
         fig = go.Figure(go.Scatter(
             x=freqs,
             y=power,
@@ -351,7 +348,6 @@ def update_power_spectrum(state, dark_mode, polarity_mode, spectrum_plot):
             line=dict(color=PLOT_CONFIG.color_spectrum, width=1)
         ))
         
-        # Apply layout
         fig.update_layout(**get_base_layout(
             dark_mode,
             xaxis_title='Frequency (Hz)',
@@ -434,7 +430,6 @@ def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
             timetrace_plot.visible = False
             return
 
-        # Create plot
         fig = go.Figure()
         fig.add_trace(go.Scattergl(
             x=times,
@@ -443,7 +438,6 @@ def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
             marker=dict(size=PLOT_CONFIG.timetrace_marker_size, color=colors),
         ))
         
-        # Apply layout
         fig.update_layout(**get_base_layout(
             dark_mode,
             xaxis_title='Time (s)',

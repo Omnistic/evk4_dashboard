@@ -173,31 +173,44 @@ evk4_dashboard/
 
 ### Loading Data
 
-1. Click **"Open File"** button
-2. Select a `.raw` or `.npz` event data file
-3. Data loads automatically and displays statistics
+1. Click **"Open File"** and select a `.raw` or `.npz` event data file.
+2. `.raw` files are automatically converted to `.npz` on first load (toggle **OVERWRITE** to re-convert).
+3. On load, the dashboard displays a **statistics table** (event count, ON/OFF split, duration, event rate, resolution) and a **bias settings table** if a bias file is present in the same folder.
 
-### Analyzing Events
+### Event Visualization
 
-**Polarity Modes:**
-- **BOTH** - Display all events
-- **CD ON (polarity=1)** - Only positive change events
-- **CD OFF (polarity=0)** - Only negative change events  
-- **SIGNED (ON - OFF)** - Difference between ON and OFF events
+The 2D histogram shows spatial event density across the sensor.
+**Polarity modes** (selector above the histogram):
+- **BOTH** — all events combined
+- **CD ON (polarity=1)** — positive-change events only
+- **CD OFF (polarity=0)** — negative-change events only
+- **SIGNED (ON - OFF)** — signed difference, highlighting net event activity
+
+**Colorscale controls** — Set **Color min / Color max** and press **APPLY** to clamp the histogram colorscale. Leave blank for auto-scaling. Useful when bright hotspots wash out low-activity pixels.
 
 **Region of Interest (ROI):**
-1. Click the rectangle tool on the 2D histogram
-2. Draw a region on the sensor area
-3. Analysis plots automatically update for the selected region
-4. Click "Erase shapes" to reset to full sensor view
+1. Click the rectangle draw tool on the histogram toolbar (active by default).
+2. Draw a region — all analysis plots update automatically for the last drawn area.
+3. Click the border of an ROI and press **Erase active shape** on the histogram toolbar to remove the selected ROI.
+
+### Time Range Filtering
+
+Use the **Time Range** slider (or the **From / To** number inputs) to restrict analysis to a portion of the recording. Click **Apply** to update all plots; **Reset** to return to the full duration.
+
+### Analysis Plots
+
+- **Time Trace** — individual events plotted over time; ON events in orange, OFF events in blue. Downsampled to 10,000 points if the dataset is large.
+- **IEI Histogram** — distribution of inter-event intervals on a log-count axis, with a frequency axis (Hz) on top.
+- **Power Spectrum** — FFT-based power spectrum of the event rate, useful for identifying periodic activity.
 
 ### Generating Frames
 
-1. Set **ΔT (ms)** - Time window for each frame
-2. Adjust **Frames** - Number of frames to generate
-3. Select **MODE** - Polarity mode for frame generation
-4. Click **"Generate Frames"** to preview
-5. Click **"Export TIFF"** to save to disk
+1. Set **ΔT (ms)** — temporal bin size per frame. Adjusting this also updates the **Frames** counter automatically (and vice versa).
+2. Select **MODE** — polarity mode for frame accumulation.
+3. Set **Color min / Color max** (optional) to clamp frame colorscale.
+4. Click **"Generate Frames"** to preview frames in the viewer. Use the slider to scrub through frames.
+5. Click **"Export TIFF"** to save all frames as a multi-page TIFF alongside the source file.
+> Frames are downsampled to 1,000 for display if the total exceeds that limit — the TIFF export always saves all frames at full resolution.
 
 ---
 

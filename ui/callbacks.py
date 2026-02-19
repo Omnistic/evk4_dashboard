@@ -84,7 +84,6 @@ def create_toggle_dark_callback(state, dark, components):
             save_config({"dark_mode": dark.value})
             components.icon.set_name('light_mode' if dark.value else 'dark_mode')
             
-            # Small delay to show the spinner
             await asyncio.sleep(0.1)
             
             if state.current_data is not None:
@@ -98,7 +97,6 @@ def create_toggle_dark_callback(state, dark, components):
                     new_colorscale = PLOT_CONFIG.get_signed_colorscale(dark.value)
                     components.histogram_plot.figure.data[0].colorscale = new_colorscale
                 
-                # Update all plots
                 template = 'plotly_dark' if dark.value else 'plotly'
                 components.histogram_plot.figure.update_layout(template=template)
                 components.histogram_plot.update()
@@ -406,7 +404,6 @@ async def process_file_full(path, state, dark, components):
     components.file_label.text = f'Loaded: {state.current_file.name}'
     components.file_label.visible = True
     
-    # Load data
     state.current_data = load_npz_data(state.current_file)
     if state.current_data is None:
         components.file_label.visible = False
@@ -416,14 +413,12 @@ async def process_file_full(path, state, dark, components):
     events = state.current_data['events']
     width, height = int(state.current_data['width']), int(state.current_data['height'])
     
-    # Validate data
     if not validate_events_not_empty(events, 'file loading'):
         components.file_label.visible = False
         state.current_file = None
         state.current_data = None
         return
     
-    # Update bias table
     bias_columns, bias_row = extract_bias_data(state.current_data)
     if bias_columns:
         components.bias_table.columns = bias_columns
@@ -432,12 +427,10 @@ async def process_file_full(path, state, dark, components):
     else:
         components.bias_table.visible = False
     
-    # Compute statistics
     stats = compute_statistics(events)
     if stats is None:
         return
     
-    # Update stats table
     components.stats_table.columns = [
         {'name': 'events', 'label': 'Events', 'field': 'events'},
         {'name': 'on_count', 'label': 'CD ON', 'field': 'on_count'},
@@ -480,7 +473,6 @@ async def process_file_full(path, state, dark, components):
     components.time_range_to.update()
     components.time_range_label.text = f'0.000 s – {duration_s:.3f} s'
     
-    # Update all plots
     try:
         await create_update_plots_callback(state, dark, components)()
         components.data_section.visible = True
@@ -499,7 +491,6 @@ def create_update_frame_display_callback(state, components):
         try:
             idx = int(components.frame_slider.value)
             
-            # Validate index
             if idx < 0 or idx >= len(state.generated_frames):
                 print(f'Warning: Invalid frame index {idx}')
                 return
@@ -527,7 +518,6 @@ def create_generate_frames_callback(state, dark, components):
         delta_t = components.delta_t_input.value
         mode = get_polarity_mode_from_string(components.frame_polarity_select.value)
         
-        # Validate inputs
         if not validate_positive_number(delta_t, 'ΔT', min_value=0.0, exclusive_min=True):
             return
         
@@ -590,7 +580,6 @@ def create_generate_frames_callback(state, dark, components):
                 yaxis=dict(scaleanchor='x', scaleratio=1, autorange='reversed'),
             ))
             
-            # Update slider and display
             components.frame_slider._props['max'] = n_frames - 1
             components.frame_slider.value = 0
             components.frame_slider.update()
@@ -622,7 +611,6 @@ def create_export_frames_callback(state, components):
         delta_t = components.delta_t_input.value
         mode = get_polarity_mode_from_string(components.frame_polarity_select.value)
         
-        # Validate inputs
         if not validate_positive_number(delta_t, 'ΔT', min_value=0.0, exclusive_min=True):
             return
         
@@ -646,7 +634,6 @@ def create_export_frames_callback(state, components):
             delta_t_us = int(delta_t * 1000)
             output_path = state.current_file.with_name(f'{state.current_file.stem}_frames_{delta_t_us}us.tif')
             
-            # Check if output directory is writable
             if not output_path.parent.exists():
                 ui.notify(f'Output directory does not exist: {output_path.parent}', type='negative')
                 return
