@@ -403,6 +403,14 @@ async def process_file_full(path, state, dark, components):
     state.current_roi = None
     components.roi_label.text = ''
     state.current_time_range = None
+    state.cached_histogram = None
+    state.cached_histogram_key = None
+    state.cached_iei = None
+    state.cached_iei_key = None
+    state.cached_power_spectrum = None
+    state.cached_power_spectrum_key = None
+    state.cached_timetrace = None
+    state.cached_timetrace_key = None
     suffix = path.suffix.lower()
     
     # Handle .raw files (convert to .npz first)

@@ -27,6 +27,22 @@ class AppState:
         current_roi: Current region of interest as (x_min, x_max, y_min, y_max)
         current_time_range: Current time range filter as (t_min_s, t_max_s) in seconds,
             or None to use the full recording duration
+        cached_histogram: Last computed histogram array, reused when only display
+            parameters (e.g. colorscale limits) have changed
+        cached_histogram_key: Tuple of (polarity_mode, time_range) that identifies
+            the parameters used to compute the cached histogram
+        cached_iei: Last computed IEI intervals array, reused when data parameters
+            have not changed
+        cached_iei_key: Tuple of (polarity_mode, time_range, roi) that identifies
+            the parameters used to compute the cached IEI data
+        cached_power_spectrum: Last computed (freqs, power) tuple, reused when
+            data parameters have not changed
+        cached_power_spectrum_key: Tuple of (polarity_mode, time_range, roi) that
+            identifies the parameters used to compute the cached power spectrum
+        cached_timetrace: Last computed (times, colors, jitter) tuple, reused when
+            only display parameters (e.g. dark mode) have changed
+        cached_timetrace_key: Tuple of (polarity_mode, time_range, roi) that
+            identifies the parameters used to compute the cached timetrace data
     """
     current_file: Optional[Path] = None
     current_data: Optional[Dict[str, Any]] = None
@@ -36,6 +52,14 @@ class AppState:
     updating: bool = False
     current_roi: Optional[Tuple[int, int, int, int]] = None
     current_time_range: Optional[Tuple[float, float]] = None
+    cached_histogram: Optional[npt.NDArray] = None
+    cached_histogram_key: Optional[Tuple] = None
+    cached_iei: Optional[npt.NDArray] = None
+    cached_iei_key: Optional[Tuple] = None
+    cached_power_spectrum: Optional[Tuple] = None
+    cached_power_spectrum_key: Optional[Tuple] = None
+    cached_timetrace: Optional[Tuple] = None
+    cached_timetrace_key: Optional[Tuple] = None
 
 
 @dataclass

@@ -113,10 +113,14 @@ def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot, zmin=
     """
     Update event histogram plot.
     
-    Recomputes the 2D spatial histogram and redraws the heatmap. If zmin/zmax
-    are provided, the colorscale is clamped to those values — useful for revealing
-    low-activity pixels when bright hotspots dominate. If either is None, that
-    limit is auto-scaled from the data.
+    Recomputes the 2D spatial histogram and redraws the heatmap only when the
+    underlying data has changed (polarity mode or time range). If only display
+    parameters changed (e.g. colorscale limits or dark mode), the cached histogram
+    is reused to avoid unnecessary recomputation.
+
+    If zmin/zmax are provided, the colorscale is clamped to those values — useful
+    for revealing low-activity pixels when bright hotspots dominate. If either is
+    None, that limit is auto-scaled from the data.
     
     Args:
         state: AppState instance
@@ -134,44 +138,46 @@ def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot, zmin=
         width, height = int(state.current_data['width']), int(state.current_data['height'])
         mode = get_polarity_mode_from_string(polarity_mode)
         
-        # Validate inputs
         if not validate_dimensions(width, height):
             return
         
         if not validate_events_not_empty(events, 'plotting'):
             return
-        
-        # Time range filter only — ROI is never applied to the histogram
-        events = filter_events_by_time_range(events, state.current_time_range)
 
-        if not validate_events_not_empty(events, 'plotting'):
-            return
+        # Check if we can reuse the cached histogram — only recompute if the
+        # polarity mode or time range has changed since the last call
+        cache_key = (polarity_mode, state.current_time_range)
+        if state.cached_histogram is not None and state.cached_histogram_key == cache_key:
+            histogram = state.cached_histogram
+        else:
+            events = filter_events_by_time_range(events, state.current_time_range)
 
-        histogram = compute_event_histogram(events, width, height, mode)
+            if not validate_events_not_empty(events, 'plotting'):
+                return
+
+            histogram = compute_event_histogram(events, width, height, mode)
+            state.cached_histogram = histogram
+            state.cached_histogram_key = cache_key
         
-        # Create appropriate heatmap based on mode
+        # Pass user-defined colorscale limits; None values fall back to auto-scaling
         if mode == 'signed':
             signed_colorscale = PLOT_CONFIG.get_signed_colorscale(dark_mode)
             fig = create_signed_heatmap(histogram, signed_colorscale, zmin=zmin, zmax=zmax)
         else:
             fig = create_regular_heatmap(histogram, zmin=zmin, zmax=zmax)
         
-        # Apply layout and update
         fig = apply_heatmap_layout(fig, dark_mode)
         histogram_plot.figure = fig
         histogram_plot.update()
         
     except KeyError as e:
         ui.notify(f'Missing required data field: {str(e)}', type='negative')
-        print(f'Data error: {e}')
         traceback.print_exc()
     except ValueError as e:
         ui.notify(f'Invalid data values: {str(e)}', type='negative')
-        print(f'Value error: {e}')
         traceback.print_exc()
     except Exception as e:
         ui.notify(f'Failed to update histogram: {str(e)}', type='negative')
-        print(f'Plot update error: {e}')
         traceback.print_exc()
 
 
@@ -183,6 +189,9 @@ def update_iei_histogram(state, dark_mode, polarity_mode, iei_plot):
     Computes time differences between consecutive events and displays distribution
     on both linear (ms) and logarithmic (Hz) scales. Applies current ROI and
     polarity filters. Downsamples if data exceeds MAX_IEI_POINTS.
+
+    Caches the computed IEI data and reuses it when only display parameters
+    (e.g. dark mode) have changed.
     
     Args:
         state: AppState instance
@@ -194,29 +203,34 @@ def update_iei_histogram(state, dark_mode, polarity_mode, iei_plot):
         return
     
     try:
-        events = state.current_data['events']
-        mode = get_polarity_mode_from_string(polarity_mode)
+        cache_key = (polarity_mode, state.current_time_range, state.current_roi)
+        if state.cached_iei is not None and state.cached_iei_key == cache_key:
+            iei_ms = state.cached_iei
+        else:
+            events = state.current_data['events']
+            mode = get_polarity_mode_from_string(polarity_mode)
 
-        # Apply filters
-        events = filter_events_by_roi(events, state.current_roi)
-        events = filter_events_by_time_range(events, state.current_time_range)
-        events = filter_events_by_polarity(events, mode)
-        
-        if not validate_array_length(events, 2, 'events for IEI histogram'):
-            return
-        
-        # Compute inter-event intervals
-        iei = np.diff(events['t'])
-        iei_ms = iei / 1000
-        iei_ms = iei_ms[iei_ms > 0]
-        
-        if len(iei_ms) == 0:
-            return
-        
-        # Downsample if needed
-        if len(iei_ms) > MAX_IEI_POINTS:
-            indices = np.random.choice(len(iei_ms), MAX_IEI_POINTS, replace=False)
-            iei_ms = iei_ms[indices]
+            events = filter_events_by_roi(events, state.current_roi)
+            events = filter_events_by_time_range(events, state.current_time_range)
+            events = filter_events_by_polarity(events, mode)
+            
+            if not validate_array_length(events, 2, 'events for IEI histogram'):
+                return
+            
+            iei = np.diff(events['t'])
+            iei_ms = iei / 1000
+            iei_ms = iei_ms[iei_ms > 0]
+            
+            if len(iei_ms) == 0:
+                return
+            
+            if len(iei_ms) > MAX_IEI_POINTS:
+                rng = np.random.default_rng()
+                indices = rng.choice(len(iei_ms), MAX_IEI_POINTS, replace=False, shuffle=False)
+                iei_ms = iei_ms[indices]
+
+            state.cached_iei = iei_ms
+            state.cached_iei_key = cache_key
         
         iei_min, iei_max = float(iei_ms.min()), float(iei_ms.max())
         
@@ -267,6 +281,9 @@ def update_power_spectrum(state, dark_mode, polarity_mode, spectrum_plot):
     Bins events into temporal windows, computes FFT of event rate time series,
     and displays power spectrum. For signed mode, uses difference between ON
     and OFF event rates. Applies current ROI filter.
+
+    Caches the computed (freqs, power) result and reuses it when only display
+    parameters (e.g. dark mode) have changed.
     
     Args:
         state: AppState instance
@@ -278,60 +295,58 @@ def update_power_spectrum(state, dark_mode, polarity_mode, spectrum_plot):
         return
     
     try:
-        events = state.current_data['events']
-        mode = get_polarity_mode_from_string(polarity_mode)
-
-        # Apply ROI filter
-        events = filter_events_by_roi(events, state.current_roi)
-        events = filter_events_by_time_range(events, state.current_time_range)
-        
-        if not validate_events_not_empty(events, 'power spectrum'):
-            return
-        
-        # Create time bins
-        times_us = events['t']
-        
-        if not validate_array_length(times_us, 2, 'timestamps for power spectrum'):
-            return
-        
-        bin_width_us = POWER_SPECTRUM_BIN_WIDTH_US
-        t_min = int(times_us.min())
-        t_max = int(times_us.max())
-        n_bins = int((t_max - t_min) // bin_width_us) + 1
-
-        if n_bins < 2:
-            return
-
-        # Compute event counts per bin using bincount (faster than np.histogram)
-        if mode == 'signed':
-            on_events = filter_events_by_polarity(events, 'on')
-            off_events = filter_events_by_polarity(events, 'off')
-            on_indices = ((on_events['t'] - t_min) // bin_width_us).astype(np.int32)
-            off_indices = ((off_events['t'] - t_min) // bin_width_us).astype(np.int32)
-            on_counts = np.bincount(on_indices, minlength=n_bins)
-            off_counts = np.bincount(off_indices, minlength=n_bins)
-            counts = on_counts.astype(np.float64) - off_counts.astype(np.float64)
+        cache_key = (polarity_mode, state.current_time_range, state.current_roi)
+        if state.cached_power_spectrum is not None and state.cached_power_spectrum_key == cache_key:
+            freqs, power = state.cached_power_spectrum
         else:
-            events = filter_events_by_polarity(events, mode)
-            bin_indices = ((events['t'] - t_min) // bin_width_us).astype(np.int32)
-            counts = np.bincount(bin_indices, minlength=n_bins).astype(np.float64)
-        
-        # Compute FFT
-        if not validate_array_length(counts, 2, 'counts for FFT'):
-            return
+            events = state.current_data['events']
+            mode = get_polarity_mode_from_string(polarity_mode)
+
+            events = filter_events_by_roi(events, state.current_roi)
+            events = filter_events_by_time_range(events, state.current_time_range)
             
-        fft = np.fft.rfft(counts - counts.mean())
-        power = np.abs(fft) ** 2
-        freqs = np.fft.rfftfreq(len(counts), d=bin_width_us / 1e6)
-        
-        # Filter frequency range
-        mask = (freqs >= MIN_FREQUENCY_HZ) & (freqs <= MAX_FREQUENCY_HZ)
-        freqs = freqs[mask]
-        power = power[mask]
-        
-        if len(freqs) == 0 or len(power) == 0:
-            print('Warning: No frequencies in valid range')
-            return
+            if not validate_events_not_empty(events, 'power spectrum'):
+                return
+            
+            times_us = events['t']
+            
+            if not validate_array_length(times_us, 2, 'timestamps for power spectrum'):
+                return
+            
+            bin_width_us = POWER_SPECTRUM_BIN_WIDTH_US
+            t_min = int(times_us.min())
+            t_max = int(times_us.max())
+            n_bins = int((t_max - t_min) // bin_width_us) + 1
+
+            if n_bins < 2:
+                return
+
+            if mode == 'signed':
+                on_events = filter_events_by_polarity(events, 'on')
+                off_events = filter_events_by_polarity(events, 'off')
+                on_indices = ((on_events['t'] - t_min) // bin_width_us).astype(np.int32)
+                off_indices = ((off_events['t'] - t_min) // bin_width_us).astype(np.int32)
+                on_counts = np.bincount(on_indices, minlength=n_bins)
+                off_counts = np.bincount(off_indices, minlength=n_bins)
+                counts = on_counts.astype(np.float64) - off_counts.astype(np.float64)
+            else:
+                events = filter_events_by_polarity(events, mode)
+                bin_indices = ((events['t'] - t_min) // bin_width_us).astype(np.int32)
+                counts = np.bincount(bin_indices, minlength=n_bins).astype(np.float64)
+            
+            fft = np.fft.rfft(counts - counts.mean())
+            power = np.abs(fft) ** 2
+            freqs = np.fft.rfftfreq(len(counts), d=bin_width_us / 1e6)
+            
+            mask = (freqs >= MIN_FREQUENCY_HZ) & (freqs <= MAX_FREQUENCY_HZ)
+            freqs = freqs[mask]
+            power = power[mask]
+
+            if len(freqs) == 0 or len(power) == 0:
+                return
+
+            state.cached_power_spectrum = (freqs, power)
+            state.cached_power_spectrum_key = cache_key
         
         # Create plot
         fig = go.Figure(go.Scatter(
@@ -366,6 +381,9 @@ def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
     orange and OFF events in blue. Vertical position is randomized (jittered)
     for visual clarity. Applies current ROI and polarity filters.
     Downsamples if data exceeds MAX_TIMETRACE_POINTS using a fast RNG.
+
+    Caches the computed (times, colors, jitter) arrays and reuses them when
+    only display parameters (e.g. dark mode) have changed.
     
     Args:
         state: AppState instance
@@ -377,42 +395,51 @@ def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
         return
     
     try:
-        events = state.current_data['events']
-        mode = get_polarity_mode_from_string(polarity_mode)
-        
-        # Apply filters
-        events = filter_events_by_roi(events, state.current_roi)
-        events = filter_events_by_time_range(events, state.current_time_range)
-        events = filter_events_by_polarity(events, mode)
-        
-        if not validate_events_not_empty(events, 'time trace'):
-            timetrace_plot.visible = False
-            return
-        
-        # Downsample if needed — use default_rng for significantly faster sampling
-        if len(events) > MAX_TIMETRACE_POINTS:
-            rng = np.random.default_rng()
-            indices = rng.choice(len(events), MAX_TIMETRACE_POINTS, replace=False, shuffle=False)
-            indices.sort()
-            events = events[indices]
-            ui.notify(f'Downsampled to {MAX_TIMETRACE_POINTS:,} points', type='info')
-        
-        # Prepare data
-        times = events['t'] / 1e6
-        
-        if not validate_array_length(times, 2, 'timestamps for time trace'):
-            timetrace_plot.visible = False
-            return
-        
+        # Check if we can reuse cached timetrace data — only recompute if polarity,
+        # time range, or ROI has changed since the last call
+        cache_key = (polarity_mode, state.current_time_range, state.current_roi)
+        if state.cached_timetrace is not None and state.cached_timetrace_key == cache_key:
+            times, colors, jitter = state.cached_timetrace
+        else:
+            events = state.current_data['events']
+            mode = get_polarity_mode_from_string(polarity_mode)
+            
+            # Apply filters
+            events = filter_events_by_roi(events, state.current_roi)
+            events = filter_events_by_time_range(events, state.current_time_range)
+            events = filter_events_by_polarity(events, mode)
+            
+            if not validate_events_not_empty(events, 'time trace'):
+                timetrace_plot.visible = False
+                return
+            
+            # Downsample if needed — use default_rng for significantly faster sampling
+            if len(events) > MAX_TIMETRACE_POINTS:
+                rng = np.random.default_rng()
+                indices = rng.choice(len(events), MAX_TIMETRACE_POINTS, replace=False, shuffle=False)
+                indices.sort()
+                events = events[indices]
+                ui.notify(f'Downsampled to {MAX_TIMETRACE_POINTS:,} points', type='info')
+            
+            # Prepare data
+            times = events['t'] / 1e6
+            
+            if not validate_array_length(times, 2, 'timestamps for time trace'):
+                timetrace_plot.visible = False
+                return
+            
+            polarities = events['p']
+            colors = np.where(polarities == 1, PLOT_CONFIG.color_on, PLOT_CONFIG.color_off)
+            jitter = np.random.uniform(-TIMETRACE_JITTER, TIMETRACE_JITTER, len(times))
+
+            state.cached_timetrace = (times, colors, jitter)
+            state.cached_timetrace_key = cache_key
+
         duration = float(times.max() - times.min())
         
         if not validate_positive_number(duration, 'time duration', min_value=0.0, exclusive_min=True):
             timetrace_plot.visible = False
             return
-        
-        polarities = events['p']
-        colors = np.where(polarities == 1, PLOT_CONFIG.color_on, PLOT_CONFIG.color_off)
-        jitter = np.random.uniform(-TIMETRACE_JITTER, TIMETRACE_JITTER, len(times))
 
         # Create plot
         fig = go.Figure()
