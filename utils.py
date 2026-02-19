@@ -227,7 +227,6 @@ def filter_events_by_time_range(
 # HISTOGRAM COMPUTATION
 # ============================================================================
 
-@profile
 def compute_event_histogram(
     events: npt.NDArray[np.void], 
     width: int, 
@@ -291,7 +290,6 @@ def compute_event_histogram(
 # PLOTLY FIGURE CREATION
 # ============================================================================
 
-@profile
 def create_signed_heatmap(
     histogram: npt.NDArray[np.int32],
     signed_colorscale: list,
@@ -334,7 +332,6 @@ def create_signed_heatmap(
         colorbar=dict(title='ON - OFF')
     ))
 
-@profile
 def create_regular_heatmap(
     histogram: npt.NDArray[np.uint32],
     zmin: Optional[float] = None,

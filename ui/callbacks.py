@@ -39,7 +39,7 @@ from ui.plots import (
 
 # Thread pool executor for async operations
 from concurrent.futures import ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=1)
+executor = ThreadPoolExecutor(max_workers=4)
 
 
 # ============================================================================
@@ -164,20 +164,24 @@ def create_update_plots_callback(state, dark, components):
         Async callback function
     """
     async def update_plots() -> None:
-        """Update all plots with current data and settings."""
+        """Update all plots concurrently with current data and settings."""
         if state.current_data is None:
             return
         
         async with loading_overlay('Updating plots...'):
             polarity_mode = components.polarity_select.value
-            update_histogram_plot(
-                state, dark.value, polarity_mode, components.histogram_plot,
-                zmin=components.colorscale_min.value,
-                zmax=components.colorscale_max.value,
+            loop = asyncio.get_event_loop()
+            await asyncio.gather(
+                loop.run_in_executor(executor, update_histogram_plot,
+                    state, dark.value, polarity_mode, components.histogram_plot,
+                    components.colorscale_min.value, components.colorscale_max.value),
+                loop.run_in_executor(executor, update_iei_histogram,
+                    state, dark.value, polarity_mode, components.iei_plot),
+                loop.run_in_executor(executor, update_power_spectrum,
+                    state, dark.value, polarity_mode, components.spectrum_plot),
+                loop.run_in_executor(executor, update_timetrace,
+                    state, dark.value, polarity_mode, components.timetrace_plot),
             )
-            update_iei_histogram(state, dark.value, polarity_mode, components.iei_plot)
-            update_power_spectrum(state, dark.value, polarity_mode, components.spectrum_plot)
-            update_timetrace(state, dark.value, polarity_mode, components.timetrace_plot)
     
     return update_plots
 

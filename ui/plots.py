@@ -9,7 +9,6 @@ and time trace visualizations.
 
 import numpy as np
 import plotly.graph_objects as go
-from nicegui import ui
 import traceback
 
 from utils import (
@@ -108,7 +107,6 @@ def get_base_layout(dark_mode: bool, **kwargs) -> dict:
     return base
 
 
-@profile
 def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot, zmin=None, zmax=None):
     """
     Update event histogram plot.
@@ -171,17 +169,16 @@ def update_histogram_plot(state, dark_mode, polarity_mode, histogram_plot, zmin=
         histogram_plot.update()
         
     except KeyError as e:
-        ui.notify(f'Missing required data field: {str(e)}', type='negative')
+        print(f'[ERROR] Missing required data field: {str(e)}')
         traceback.print_exc()
     except ValueError as e:
-        ui.notify(f'Invalid data values: {str(e)}', type='negative')
+        print(f'[ERROR] Invalid data values: {str(e)}')
         traceback.print_exc()
     except Exception as e:
-        ui.notify(f'Failed to update histogram: {str(e)}', type='negative')
+        print(f'[ERROR] Failed to update histogram: {str(e)}')
         traceback.print_exc()
 
 
-@profile
 def update_iei_histogram(state, dark_mode, polarity_mode, iei_plot):
     """
     Update inter-event interval (IEI) histogram.
@@ -273,7 +270,6 @@ def update_iei_histogram(state, dark_mode, polarity_mode, iei_plot):
         traceback.print_exc()
 
 
-@profile
 def update_power_spectrum(state, dark_mode, polarity_mode, spectrum_plot):
     """
     Update power spectrum plot via FFT analysis.
@@ -372,7 +368,6 @@ def update_power_spectrum(state, dark_mode, polarity_mode, spectrum_plot):
         traceback.print_exc()
 
 
-@profile
 def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
     """
     Update time trace scatter plot.
@@ -419,7 +414,6 @@ def update_timetrace(state, dark_mode, polarity_mode, timetrace_plot):
                 indices = rng.choice(len(events), MAX_TIMETRACE_POINTS, replace=False, shuffle=False)
                 indices.sort()
                 events = events[indices]
-                ui.notify(f'Downsampled to {MAX_TIMETRACE_POINTS:,} points', type='info')
             
             # Prepare data
             times = events['t'] / 1e6
